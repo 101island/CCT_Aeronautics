@@ -1,7 +1,13 @@
 -- 控制参数
-local Kp = 1.8
+local Kp = 1.0
 local Ki = 0.02
 local Kd = 0.5
+
+target = 200
+
+-- ===== 已知：一个标定点 =====
+local h0 = 70.3
+local n0 = 50
 
 local pressure = {
     points = {}
@@ -129,11 +135,6 @@ p.points = createDefaultPressureCurve(seaLevel, minY, logicalHeight).points
 local altimeter = peripheral.wrap("right")
 local engine = peripheral.wrap("left")
 
--- ===== 已知：一个标定点 =====
-local h0 = 70.3
-local n0 = 50
-
-target = 200
 
 -- 气压函数
 local function rho(h)
@@ -145,17 +146,45 @@ local function hover_speed(h)
     return n0 * (rho(h0) / rho(h))
 end
 
+local function waitForTimer(timerId)
+    while true do
+        local event, firedTimerId = os.pullEvent("timer")
+        if event == "timer" and firedTimerId == timerId then
+            return
+        end
+    end
+end
+
+local pwmError = 0.0
+
+local function quantizeSpeedWithPWM(speed)
+    local clamped = math.max(-256, math.min(256, speed))
+    local lower = math.floor(clamped)
+    local upper = math.ceil(clamped)
+
+    if lower == upper then
+        return lower, clamped
+    end
+
+    pwmError = pwmError + (clamped - lower)
+
+    if pwmError >= 1.0 then
+        pwmError = pwmError - 1.0
+        return upper, clamped
+    end
+
+    return lower, clamped
+end
 
 
-local last_h = altimeter.getHeight()
 
 local dt = 0.1
-
+local last_h = altimeter.getHeight()
 local integral = 0
 
 while true do
-    os.startTimer(0.05)
-    os.pullEvent("timer")
+    local timerId = os.startTimer(0.05)
+    waitForTimer(timerId)
 
 
     local h = altimeter.getHeight()
@@ -172,14 +201,15 @@ while true do
 
     -- PID 控制
     local control = Kp * error + Ki * integral - Kd * v
+    control = math.max(-100, math.min(100, control))
 
-    local speed = base + control
-    speed = math.max(1, math.min(256, speed))
+    local desiredSpeed = base + control
+    local speed = quantizeSpeedWithPWM(desiredSpeed)
 
     engine.setGeneratedSpeed(speed)
 
     print(string.format(
-        "H=%.2f T=%.2f control=%.2f",
-        h, target, control
+        "H=%.2f T=%.2f control=%.2f speed=%d target_speed=%.2f",
+        h, target, control, speed, desiredSpeed
     ))
 end
