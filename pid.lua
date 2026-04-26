@@ -70,14 +70,60 @@ function pressure:evaluate(h)
     return math.max(result, 0)
 end
 
+local function createDefaultPressureCurve(seaLevel, minY, logicalHeight)
+    local currentAltitude = minY
+    local maxAltitude = currentAltitude + logicalHeight
+
+    local baseSlope = -0.004
+    local maxPressure = 1.5
+    local maxStep = 200.0
+    local smoothingAltitude = maxAltitude - 40.0
+
+    currentAltitude = math.max(currentAltitude, math.log(maxPressure) / baseSlope + seaLevel)
+
+    local pressureFunction = {
+        points = {}
+    }
+
+    function pressureFunction:addPoint(altitude, value, slope)
+        table.insert(self.points, {
+            altitude = altitude,
+            value = value,
+            slope = slope
+        })
+    end
+
+    while true do
+        local currentPressure = math.exp(baseSlope * (currentAltitude - seaLevel))
+        local currentSlope = currentPressure * baseSlope
+        pressureFunction:addPoint(currentAltitude, currentPressure, currentSlope)
+
+        if currentAltitude < seaLevel and currentAltitude + maxStep >= seaLevel then
+            currentAltitude = seaLevel
+        elseif currentAltitude < smoothingAltitude and currentAltitude + maxStep >= smoothingAltitude then
+            currentAltitude = smoothingAltitude
+        elseif currentAltitude >= smoothingAltitude then
+            break
+        else
+            currentAltitude = currentAltitude + maxStep
+        end
+    end
+
+    local smoothingPressure = pressureFunction.points[#pressureFunction.points].value
+    local finalSlope = -2.0 * smoothingPressure / (maxAltitude - smoothingAltitude)
+    pressureFunction:addPoint(maxAltitude, 0.0, finalSlope)
+
+    return pressureFunction
+end
+
 
 local p = pressure
 
-p:addPoint(-38.366277, 1.500000, -0.006000)
-p:addPoint(63.000000, 1.000000, -0.004000)
-p:addPoint(263.000000, 0.449329, -0.0017973)
-p:addPoint(280.000000, 0.419790, -0.001679)
-p:addPoint(320.000000, 0.000000, -0.020989)
+local seaLevel = 63.0
+local minY = -64.0
+local logicalHeight = 704.0
+
+p.points = createDefaultPressureCurve(seaLevel, minY, logicalHeight).points
 
 
 local altimeter = peripheral.wrap("right")
