@@ -4,6 +4,7 @@ local Ki = 0.02
 local Kd = 0.5
 
 target = 200
+local m = 1
 
 -- ===== 已知：一个标定点 =====
 -- 按推力为n0时悬停高度为h0填
@@ -13,6 +14,7 @@ local n0 = 50
 -- 获取高度计和引擎
 local altimeter = peripheral.wrap("right")
 local engine = peripheral.wrap("left")
+local relay = peripheral.wrap("top")
 
 local pressure = {
     points = {}
@@ -186,6 +188,14 @@ local integral = 0
 while true do
     local timerId = os.startTimer(0.05)
     waitForTimer(timerId)
+
+    if relay.getInput("front") then
+        target = target + m
+    end
+
+    if relay.getInput("back") then
+        target = target - m
+    end
 
 
     local h = altimeter.getHeight()
