@@ -10,21 +10,14 @@ local Kd = 0
 
 local integral = 0
 local last_error = 0
-local last_time = os.clock()
 
-local hover = 120  -- 🔥 你必须测出来！
 
-local dt = 0.05
+local dt = 0.1
 
 while true do
     -- 用timer保证tick（避免卡死）
-    os.startTimer(dt)
+    os.startTimer(0.05)
     os.pullEvent("timer")
-
-    local now = os.clock()
-    local dt = now - last_time
-    print(string.format("dt=%.3f", dt))
-    last_time = now
 
     local height = altimeter.getHeight()
     local error = target - height
@@ -40,7 +33,7 @@ while true do
     local pid = Kp * error + Ki * integral + Kd * derivative
 
     -- 输出
-    local speed = hover + pid
+    local speed = pid
 
     -- 限制范围
     speed = math.max(1, math.min(256, speed))
