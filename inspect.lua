@@ -1,40 +1,189 @@
-local side = ...
+local args = {...}
 
-if not side then
-    print("Usage: inspect <side>")
+------------------------------------------------
+-- CONFIG
+------------------------------------------------
+local PAGE = 18
+local MAX_DEPTH = 4
+local AUTO_CALL = true
+
+------------------------------------------------
+-- COLOR SAFE
+------------------------------------------------
+local color = term.isColor and term.isColor()
+
+local function c(t)
+    if color then term.setTextColor(t) end
+end
+
+local function reset()
+    if color then term.setTextColor(colors.white) end
+end
+
+------------------------------------------------
+-- PAGER
+------------------------------------------------
+local lines = 0
+
+local function println(txt)
+    print(txt or "")
+    lines = lines + 1
+    if lines >= PAGE then
+        c(colors.gray)
+        write("--More-- Press Enter")
+        reset()
+        read()
+        term.clear()
+        term.setCursorPos(1,1)
+        lines = 0
+    end
+end
+
+------------------------------------------------
+-- TABLE PRETTY PRINT
+------------------------------------------------
+local function seenTable()
+    return setmetatable({}, {__mode="k"})
+end
+
+local function dump(value, depth, seen, prefix)
+    depth = depth or 0
+    prefix = prefix or ""
+
+    local t = type(value)
+
+    if t ~= "table" then
+        println(prefix .. tostring(value))
+        return
+    end
+
+    if seen[value] then
+        println(prefix .. "<recursive table>")
+        return
+    end
+
+    if depth >= MAX_DEPTH then
+        println(prefix .. "{...}")
+        return
+    end
+
+    seen[value] = true
+
+    println(prefix .. "{")
+
+    local keys = {}
+    for k in pairs(value) do table.insert(keys, k) end
+
+    table.sort(keys, function(a,b)
+        return tostring(a) < tostring(b)
+    end)
+
+    for _,k in ipairs(keys) do
+        local v = value[k]
+        local head = string.rep(" ", depth*2+2) .. "["..tostring(k).."] = "
+
+        if type(v) == "table" then
+            dump(v, depth+1, seen, head)
+        else
+            println(head .. tostring(v))
+        end
+    end
+
+    println(string.rep(" ", depth*2) .. "}")
+end
+
+------------------------------------------------
+-- MAIN
+------------------------------------------------
+if not args[1] then
+    print("Usage:")
+    print("inspect <side>")
+    print("inspect <side> <method>")
     return
 end
 
+local side = args[1]
+
 if not peripheral.isPresent(side) then
-    print("No peripheral.")
+    print("No peripheral: "..side)
     return
 end
 
 local p = peripheral.wrap(side)
 
-print("== "..side.." ==")
+------------------------------------------------
+-- METHOD MODE
+------------------------------------------------
+if args[2] then
+    local method = args[2]
 
-print("Types:")
-for _,v in ipairs({peripheral.getType(side)}) do
-    print(" "..v)
-end
-
-print("")
-print("Methods:")
-
-local methods = peripheral.getMethods(side)
-table.sort(methods)
-
-for _,name in ipairs(methods) do
-    io.write(name)
+    c(colors.cyan)
+    println("Calling "..method.."()")
+    reset()
 
     local ok, result = pcall(function()
-        return p[name]()
+        return p[method]()
     end)
 
-    if ok and result ~= nil then
-        print(" -> "..tostring(result))
+    if not ok then
+        c(colors.red)
+        println("ERROR: "..tostring(result))
+        reset()
+        return
+    end
+
+    dump(result,0,seenTable(),"")
+    return
+end
+
+------------------------------------------------
+-- INSPECT MODE
+------------------------------------------------
+c(colors.yellow)
+println("=== "..side.." ===")
+reset()
+
+c(colors.lime)
+println("Types:")
+reset()
+
+local types = { peripheral.getType(side) }
+for _,v in ipairs(types) do
+    println(" - "..v)
+end
+
+println("")
+
+local methods = peripheral.getMethods(side) or {}
+table.sort(methods)
+
+c(colors.orange)
+println("Methods: "..#methods)
+reset()
+
+for _,m in ipairs(methods) do
+    write(" - "..m)
+
+    if AUTO_CALL then
+        local ok, result = pcall(function()
+            return p[m]()
+        end)
+
+        if ok then
+            if result ~= nil then
+                print(" -> "..type(result) .. " " .. tostring(result))
+            else
+                print()
+            end
+        else
+            print()
+        end
     else
         print()
     end
 end
+
+println("")
+c(colors.gray)
+println("Tip: inspect "..side.." <method>")
+reset()
