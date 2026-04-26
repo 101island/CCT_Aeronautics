@@ -6,8 +6,13 @@ local Kd = 0.5
 target = 200
 
 -- ===== 已知：一个标定点 =====
+-- 按推力为n0时悬停高度为h0填
 local h0 = 70.3
 local n0 = 50
+
+-- 获取高度计和引擎
+local altimeter = peripheral.wrap("right")
+local engine = peripheral.wrap("left")
 
 local pressure = {
     points = {}
@@ -132,29 +137,17 @@ local logicalHeight = 704.0
 p.points = createDefaultPressureCurve(seaLevel, minY, logicalHeight).points
 
 
-local altimeter = peripheral.wrap("right")
-local engine = peripheral.wrap("left")
-
-
 -- 气压函数
 local function rho(h)
     return p:evaluate(h)
 end
 
--- hover推力
+-- 悬停推力 根据线性关系推算到达target所需推力
 local function hover_speed(h)
     return n0 * (rho(h0) / rho(h))
 end
 
-local function waitForTimer(timerId)
-    while true do
-        local event, firedTimerId = os.pullEvent("timer")
-        if event == "timer" and firedTimerId == timerId then
-            return
-        end
-    end
-end
-
+-- PWM
 local pwmError = 0.0
 
 local function quantizeSpeedWithPWM(speed)
@@ -176,8 +169,16 @@ local function quantizeSpeedWithPWM(speed)
     return lower, clamped
 end
 
+local function waitForTimer(timerId)
+    while true do
+        local event, firedTimerId = os.pullEvent("timer")
+        if event == "timer" and firedTimerId == timerId then
+            return
+        end
+    end
+end
 
-
+-- os.startTimer(0.05)的实际dt是0.1而不是0.05
 local dt = 0.1
 local last_h = altimeter.getHeight()
 local integral = 0
@@ -197,10 +198,13 @@ while true do
 
     integral = integral + error * dt
 
+    -- 限制积分项
     integral = math.max(-50, math.min(50, integral))
 
     -- PID 控制
     local control = Kp * error + Ki * integral - Kd * v
+
+    -- 限制控制输出
     control = math.max(-100, math.min(100, control))
 
     local desiredSpeed = base + control
@@ -209,7 +213,7 @@ while true do
     engine.setGeneratedSpeed(speed)
 
     print(string.format(
-        "H=%.2f T=%.2f control=%.2f speed=%d target_speed=%.2f",
-        h, target, control, speed, desiredSpeed
+        "H=%.2f T=%.2f b=%.2f c=%.2f s=%d ds=%.2f",
+        h, target, base, control, speed, desiredSpeed
     ))
 end
