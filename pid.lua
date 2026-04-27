@@ -15,6 +15,12 @@ local n0 = 50
 local altimeter = peripheral.wrap("right")
 local engine = peripheral.wrap("left")
 local relay = peripheral.wrap("top")
+local monitor = peripheral.find("monitor")
+
+if monitor then
+    monitor.setTextScale(1)
+    monitor.clear()
+end
 
 local pressure = {
     points = {}
@@ -195,6 +201,12 @@ while true do
 
     if relay.getInput("back") then
         target = target - m
+    end
+
+    if monitor then
+        monitor.setCursorPos(1, 1)
+        monitor.clearLine()
+        monitor.write(string.format("Target: %.2f", target))
     end
 
 
