@@ -92,13 +92,37 @@ local function dump(value, depth, seen, prefix)
     println(string.rep(" ", depth*2) .. "}")
 end
 
+local function parseArg(value)
+    local first = value:sub(1, 1)
+    local last = value:sub(-1)
+
+    if #value >= 2 and ((first == '"' and last == '"') or (first == "'" and last == "'")) then
+        return value:sub(2, -2)
+    end
+
+    local num = tonumber(value)
+    if num ~= nil then
+        return num
+    end
+
+    return value
+end
+
+local function formatArg(value)
+    if type(value) == "string" then
+        return string.format("%q", value)
+    end
+
+    return tostring(value)
+end
+
 ------------------------------------------------
 -- MAIN
 ------------------------------------------------
 if not args[1] then
     print("Usage:")
     print("inspect <side>")
-    print("inspect <side> <method>")
+    print("inspect <side> <method> <arg1> ...")
     return
 end
 
@@ -116,23 +140,49 @@ local p = peripheral.wrap(side)
 ------------------------------------------------
 if args[2] then
     local method = args[2]
+    local methodArgs = {}
+
+    for i = 3, #args do
+        methodArgs[#methodArgs + 1] = parseArg(args[i])
+    end
+
+    local previewArgs = {}
+    for i = 1, #methodArgs do
+        previewArgs[i] = formatArg(methodArgs[i])
+    end
 
     c(colors.cyan)
-    println("Calling "..method.."()")
+    println("Calling "..method.."("..table.concat(previewArgs, ", ")..")")
     reset()
 
-    local ok, result = pcall(function()
-        return p[method]()
-    end)
+    local results = table.pack(pcall(function()
+        return p[method](table.unpack(methodArgs, 1, #methodArgs))
+    end))
+
+    local ok = results[1]
 
     if not ok then
         c(colors.red)
-        println("ERROR: "..tostring(result))
+        println("ERROR: "..tostring(results[2]))
         reset()
         return
     end
 
-    dump(result,0,seenTable(),"")
+    if results.n == 1 then
+        println("<no return values>")
+        return
+    end
+
+    if results.n == 2 then
+        dump(results[2],0,seenTable(),"")
+        return
+    end
+
+    for i = 2, results.n do
+        println("return #"..(i - 1)..":")
+        dump(results[i],0,seenTable(),"  ")
+    end
+
     return
 end
 
@@ -185,5 +235,5 @@ end
 
 println("")
 c(colors.gray)
-println("Tip: inspect "..side.." <method>")
+println("Tip: inspect "..side.." <method> <arg1> ...")
 reset()
