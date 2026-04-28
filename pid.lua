@@ -243,7 +243,7 @@ while true do
     -- 限制控制输出
     control = math.max(-capacity, math.min(capacity, control))
 
-    local desiredFill = math.max(0, math.min(capacity, base))
+    local desiredFill = math.max(0, math.min(capacity, base + control))
     local level, desiredLevel = setBalloonFillTarget(desiredFill)
 
     print(string.format(
