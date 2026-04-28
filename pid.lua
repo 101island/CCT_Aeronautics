@@ -2,6 +2,7 @@
 local Kp = 0.6
 local Ki = 0.0
 local Kd = 1.2
+local pwmWindowTicks = 5
 
 target = 200
 local targetStep = 1
@@ -163,7 +164,7 @@ local function hover_fill(h)
 end
 
 -- PWM
-local pwmError = 0.0
+local pwmTickCounter = 0
 
 local function quantizeLevelWithPWM(level)
     local clamped = math.max(0, math.min(15, level))
@@ -174,10 +175,12 @@ local function quantizeLevelWithPWM(level)
         return lower, clamped
     end
 
-    pwmError = pwmError + (clamped - lower)
+    local fraction = clamped - lower
+    local upperTicks = math.floor(fraction * pwmWindowTicks + 0.5)
 
-    if pwmError >= 1.0 then
-        pwmError = pwmError - 1.0
+    pwmTickCounter = (pwmTickCounter + 1) % pwmWindowTicks
+
+    if pwmTickCounter < upperTicks then
         return upper, clamped
     end
 
