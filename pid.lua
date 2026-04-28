@@ -2,7 +2,6 @@
 local Kp = 0.6
 local Ki = 0.0
 local Kd = 1.2
-local pwmWindowTicks = 5
 
 target = 200
 local targetStep = 1
@@ -164,7 +163,7 @@ local function hover_fill(h)
 end
 
 -- PWM
-local pwmTickCounter = 0
+local pwmError = 0.0
 
 local function quantizeLevelWithPWM(level)
     local clamped = math.max(0, math.min(15, level))
@@ -175,12 +174,10 @@ local function quantizeLevelWithPWM(level)
         return lower, clamped
     end
 
-    local fraction = clamped - lower
-    local upperTicks = math.floor(fraction * pwmWindowTicks + 0.5)
+    pwmError = pwmError + (clamped - lower)
 
-    pwmTickCounter = (pwmTickCounter + 1) % pwmWindowTicks
-
-    if pwmTickCounter < upperTicks then
+    if pwmError >= 1.0 then
+        pwmError = pwmError - 1.0
         return upper, clamped
     end
 
@@ -203,13 +200,13 @@ local function waitForTimer(timerId)
     end
 end
 
--- os.startTimer(0.05)的实际dt是0.1而不是0.05
-local dt = 0.1
+-- os.startTimer(0.05)的实际dt是0.1而不是0.05 ?? 又测了一遍现在相等了 ??
+local dt = 0.2
 local last_h = altimeter.getHeight()
 local integral = 0.0
 
 while true do
-    local timerId = os.startTimer(0.05)
+    local timerId = os.startTimer(dt)
     waitForTimer(timerId)
 
     if relay.getInput("front") then
