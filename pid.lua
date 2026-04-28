@@ -1,20 +1,22 @@
 -- 控制参数
-local Kp = 1.0
-local Ki = 0.02
-local Kd = 0.5
+local Kp = 0.6
+local Ki = 0.0
+local Kd = 1.2
 
 target = 200
-local m = 1
+local targetStep = 1
+local capacity = 122
+local maxSteamOutput = 200
 
 -- ===== 已知：一个标定点 =====
--- 按推力为n0时悬停高度为h0填
-local h0 = 70.3
-local n0 = 50
+-- 在 h0 高度、红石信号为 hoverLevel 时可悬停
+local h0 = 205
+local hoverLevel = 7
+local fill0 = maxSteamOutput * hoverLevel / 15
 
--- 获取高度计和引擎
+-- 获取高度计和热气球控制外设
 local altimeter = peripheral.wrap("right")
-local engine = peripheral.wrap("left")
-local relay = peripheral.wrap("top")
+local relay = peripheral.find("redstone_relay")
 local monitor = peripheral.find("monitor")
 
 if monitor then
@@ -150,16 +152,21 @@ local function rho(h)
     return p:evaluate(h)
 end
 
--- 悬停推力 根据线性关系推算到达target所需推力
-local function hover_speed(h)
-    return n0 * (rho(h0) / rho(h))
+-- 悬停填充量: 浮力与气压成正比，因此所需填充量与气压成反比
+local function hover_fill(h)
+    local density = rho(h)
+    if density <= 0 then
+        return capacity
+    end
+
+    return fill0 * (rho(h0) / density)
 end
 
 -- PWM
 local pwmError = 0.0
 
-local function quantizeSpeedWithPWM(speed)
-    local clamped = math.max(-256, math.min(256, speed))
+local function quantizeLevelWithPWM(level)
+    local clamped = math.max(0, math.min(15, level))
     local lower = math.floor(clamped)
     local upper = math.ceil(clamped)
 
@@ -177,6 +184,13 @@ local function quantizeSpeedWithPWM(speed)
     return lower, clamped
 end
 
+local function setBalloonFillTarget(fillTarget)
+    local desiredLevel = fillTarget / maxSteamOutput * 15
+    local level, exactLevel = quantizeLevelWithPWM(desiredLevel)
+    relay.setAnalogOutput("left", level)
+    return level, exactLevel
+end
+
 local function waitForTimer(timerId)
     while true do
         local event, firedTimerId = os.pullEvent("timer")
@@ -189,18 +203,18 @@ end
 -- os.startTimer(0.05)的实际dt是0.1而不是0.05
 local dt = 0.1
 local last_h = altimeter.getHeight()
-local integral = 0
+local integral = 0.0
 
 while true do
     local timerId = os.startTimer(0.05)
     waitForTimer(timerId)
 
     if relay.getInput("front") then
-        target = target + m
+        target = target + targetStep
     end
 
     if relay.getInput("back") then
-        target = target - m
+        target = target - targetStep
     end
 
     if monitor then
@@ -216,26 +230,33 @@ while true do
 
     local error = target - h
 
-    local base = hover_speed(target)
+    local base = hover_fill(target)
 
+    -- 热气球自身已经有明显惯性，先使用 PD 避免积分累积导致超调
     integral = integral + error * dt
 
     -- 限制积分项
     integral = math.max(-50, math.min(50, integral))
 
-    -- PID 控制
     local control = Kp * error + Ki * integral - Kd * v
 
     -- 限制控制输出
-    control = math.max(-100, math.min(100, control))
+    control = math.max(-capacity, math.min(capacity, control))
 
-    local desiredSpeed = base + control
-    local speed = quantizeSpeedWithPWM(desiredSpeed)
-
-    engine.setGeneratedSpeed(speed)
+    local desiredFill = math.max(0, math.min(capacity, base))
+    local level, desiredLevel = setBalloonFillTarget(desiredFill)
 
     print(string.format(
-        "H=%.2f T=%.2f b=%.2f c=%.2f s=%d ds=%.2f",
-        h, target, base, control, speed, desiredSpeed
+        "H=%.2f T=%.2f b=%.2f c=%.2f f=%.2f l=%d dl=%.2f",
+        h, target, base, control, desiredFill, level, desiredLevel
     ))
+
+    if monitor then
+        monitor.setCursorPos(1, 2)
+        monitor.clearLine()
+        monitor.write(string.format("Fill: %.2f", desiredFill))
+        monitor.setCursorPos(1, 3)
+        monitor.clearLine()
+        monitor.write(string.format("Level: %d (%.2f)", level, desiredLevel))
+    end
 end
